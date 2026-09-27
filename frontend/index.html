@@ -3311,7 +3311,425 @@
         return map[Number(code)] || 'Forecast condition';
     }
 
+// ============================================================
+// ZEPHYR AI — OFFICIAL DISASTER ALERTS
+// Source: SACHET / NDMA Government of India
+// ============================================================
 
+const SACHET_ALERTS_API =
+    "https://zephyr-ai-fcun.onrender.com/api/alerts";
+
+let sachetAlerts = [];
+
+// ------------------------------------------------------------
+// Official alert styling
+// ------------------------------------------------------------
+
+(function addSachetAlertStyles() {
+    const style = document.createElement("style");
+
+    style.textContent = `
+        #sachetOfficialAlerts {
+            margin: 20px 0;
+            border-radius: 14px;
+            overflow: hidden;
+            border: 1px solid rgba(255,255,255,0.12);
+            background: rgba(10,18,30,0.96);
+            box-shadow: 0 8px 30px rgba(0,0,0,0.25);
+        }
+
+        .sachet-alert-header {
+            padding: 16px 18px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            border-bottom: 1px solid rgba(255,255,255,0.10);
+        }
+
+        .sachet-alert-title {
+            font-size: 17px;
+            font-weight: 700;
+        }
+
+        .sachet-alert-source {
+            font-size: 11px;
+            opacity: 0.65;
+            margin-top: 3px;
+        }
+
+        .sachet-alert-count {
+            min-width: 28px;
+            height: 28px;
+            padding: 0 8px;
+            border-radius: 999px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #b91c1c;
+            color: white;
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        .sachet-alert-list {
+            display: grid;
+            gap: 10px;
+            padding: 14px;
+        }
+
+        .sachet-alert-card {
+            padding: 14px;
+            border-radius: 10px;
+            border-left: 4px solid #64748b;
+            background: rgba(255,255,255,0.045);
+        }
+
+        .sachet-alert-card.severe {
+            border-left-color: #dc2626;
+        }
+
+        .sachet-alert-card.moderate {
+            border-left-color: #f59e0b;
+        }
+
+        .sachet-alert-card.low {
+            border-left-color: #22c55e;
+        }
+
+        .sachet-alert-event {
+            font-size: 15px;
+            font-weight: 700;
+            margin-bottom: 5px;
+        }
+
+        .sachet-alert-headline {
+            font-size: 13px;
+            line-height: 1.5;
+            margin-bottom: 8px;
+        }
+
+        .sachet-alert-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 7px;
+            font-size: 11px;
+            opacity: 0.75;
+        }
+
+        .sachet-alert-tag {
+            padding: 4px 7px;
+            border-radius: 5px;
+            background: rgba(255,255,255,0.07);
+        }
+
+        .sachet-alert-area {
+            margin-top: 8px;
+            font-size: 12px;
+            opacity: 0.8;
+        }
+
+        .sachet-alert-footer {
+            padding: 10px 14px 14px;
+            font-size: 10px;
+            opacity: 0.55;
+        }
+
+        .sachet-alert-empty {
+            padding: 22px;
+            text-align: center;
+            opacity: 0.65;
+            font-size: 13px;
+        }
+
+        .sachet-alert-error {
+            padding: 18px;
+            color: #fca5a5;
+            font-size: 13px;
+        }
+    `;
+
+    document.head.appendChild(style);
+})();
+
+
+// ------------------------------------------------------------
+// Convert official severity to CSS class
+// ------------------------------------------------------------
+
+function sachetSeverityClass(severity) {
+    const value = String(severity || "").toLowerCase();
+
+    if (value.includes("severe")) {
+        return "severe";
+    }
+
+    if (value.includes("moderate")) {
+        return "moderate";
+    }
+
+    return "low";
+}
+
+
+// ------------------------------------------------------------
+// Check whether an official alert has expired
+// ------------------------------------------------------------
+
+function sachetAlertIsActive(alert) {
+    if (!alert || !alert.expires) {
+        return true;
+    }
+
+    const expiry = new Date(alert.expires);
+
+    if (Number.isNaN(expiry.getTime())) {
+        return true;
+    }
+
+    return expiry.getTime() > Date.now();
+}
+
+
+// ------------------------------------------------------------
+// Create the alert panel
+// ------------------------------------------------------------
+
+function createSachetAlertPanel() {
+    if (document.getElementById("sachetOfficialAlerts")) {
+        return document.getElementById("sachetOfficialAlerts");
+    }
+
+    const panel = document.createElement("section");
+
+    panel.id = "sachetOfficialAlerts";
+
+    panel.innerHTML = `
+        <div class="sachet-alert-header">
+            <div>
+                <div class="sachet-alert-title">
+                    Official Disaster Alerts
+                </div>
+
+                <div class="sachet-alert-source">
+                    SACHET / NDMA • Government of India
+                </div>
+            </div>
+
+            <div
+                id="sachetAlertCount"
+                class="sachet-alert-count"
+            >
+                0
+            </div>
+        </div>
+
+        <div
+            id="sachetAlertList"
+            class="sachet-alert-list"
+        >
+            <div class="sachet-alert-empty">
+                Loading official alerts...
+            </div>
+        </div>
+
+        <div class="sachet-alert-footer">
+            Alerts are reproduced from the official SACHET / NDMA
+            warning feed. Follow instructions issued by local authorities.
+        </div>
+    `;
+
+    const script = document.currentScript;
+
+    if (script && script.parentNode) {
+        script.parentNode.insertBefore(panel, script);
+    } else {
+        document.body.prepend(panel);
+    }
+
+    return panel;
+}
+
+
+// ------------------------------------------------------------
+// Render official alerts
+// ------------------------------------------------------------
+
+function renderSachetAlerts() {
+    const panel = createSachetAlertPanel();
+
+    const list = panel.querySelector("#sachetAlertList");
+    const count = panel.querySelector("#sachetAlertCount");
+
+    const activeAlerts = sachetAlerts.filter(
+        sachetAlertIsActive
+    );
+
+    count.textContent = activeAlerts.length;
+
+    if (!activeAlerts.length) {
+        list.innerHTML = `
+            <div class="sachet-alert-empty">
+                No active official disaster alerts.
+            </div>
+        `;
+
+        return;
+    }
+
+    list.innerHTML = activeAlerts.map(alert => {
+        const severityClass =
+            sachetSeverityClass(alert.severity);
+
+        const event =
+            alert.event ||
+            alert.category ||
+            "Official Warning";
+
+        const headline =
+            alert.headline ||
+            alert.description ||
+            "Official warning received.";
+
+        const area =
+            alert.area ||
+            "Area information unavailable";
+
+        const sender =
+            alert.sender ||
+            "Authorized authority";
+
+        const expires =
+            alert.expires
+                ? new Date(alert.expires).toLocaleString()
+                : "Not specified";
+
+        return `
+            <article class="sachet-alert-card ${severityClass}">
+
+                <div class="sachet-alert-event">
+                    ${escapeHtml(event)}
+                </div>
+
+                <div class="sachet-alert-headline">
+                    ${escapeHtml(headline)}
+                </div>
+
+                <div class="sachet-alert-meta">
+
+                    <span class="sachet-alert-tag">
+                        ${escapeHtml(
+                            alert.severity || "Warning"
+                        )}
+                    </span>
+
+                    <span class="sachet-alert-tag">
+                        ${escapeHtml(sender)}
+                    </span>
+
+                    <span class="sachet-alert-tag">
+                        Expires: ${escapeHtml(expires)}
+                    </span>
+
+                </div>
+
+                <div class="sachet-alert-area">
+                    <strong>Affected area:</strong>
+                    ${escapeHtml(area)}
+                </div>
+
+            </article>
+        `;
+    }).join("");
+}
+
+
+// ------------------------------------------------------------
+// Safe HTML escaping
+// ------------------------------------------------------------
+
+function escapeHtml(value) {
+    return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
+
+// ------------------------------------------------------------
+// Fetch official SACHET alerts
+// ------------------------------------------------------------
+
+async function loadSachetAlerts() {
+    try {
+        const response = await fetch(
+            SACHET_ALERTS_API,
+            {
+                method: "GET",
+                cache: "no-store"
+            }
+        );
+
+        if (!response.ok) {
+            throw new Error(
+                `SACHET API returned HTTP ${response.status}`
+            );
+        }
+
+        const data = await response.json();
+
+        if (!data || !Array.isArray(data.alerts)) {
+            throw new Error(
+                "Invalid SACHET alert response."
+            );
+        }
+
+        sachetAlerts = data.alerts;
+
+        renderSachetAlerts();
+
+        console.log(
+            `[SACHET] Loaded ${sachetAlerts.length} official alert(s)`
+        );
+
+    } catch (error) {
+
+        console.error(
+            "[SACHET] Failed to load official alerts:",
+            error
+        );
+
+        const panel = createSachetAlertPanel();
+
+        const list =
+            panel.querySelector("#sachetAlertList");
+
+        list.innerHTML = `
+            <div class="sachet-alert-error">
+                Official disaster alert service is temporarily
+                unavailable. Please check the SACHET / NDMA
+                official warning system directly.
+            </div>
+        `;
+    }
+}
+
+
+// ------------------------------------------------------------
+// Start official alert system
+// ------------------------------------------------------------
+
+createSachetAlertPanel();
+
+loadSachetAlerts();
+
+// Refresh official alerts every 60 seconds.
+setInterval(
+    loadSachetAlerts,
+    60 * 1000
+);
 </script>
 
 </body>

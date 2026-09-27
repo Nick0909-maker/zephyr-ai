@@ -9,6 +9,8 @@ from typing import Any, Optional
 import httpx
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+import xml.etree.ElementTree as ET
+from urllib.parse import urlparse, parse_qs
 
 # ============================================================
 # CONFIGURATION
@@ -90,7 +92,114 @@ http_client: httpx.AsyncClient | None = None
 cache = {"timestamp": 0.0, "data": None}
 intelligence_cache: dict[str, dict[str, Any]] = {}
 cache_lock = asyncio.Lock()
+cache = {"timestamp": 0.0, "data": None}
+intelligence_cache: dict[str, dict[str, Any]] = {}
+cache_lock = asyncio.Lock()
 
+# ============================================================
+# SACHET / NDMA OFFICIAL DISASTER ALERTS
+# ============================================================
+
+SACHET_RSS_URL = (
+    "https://sachet.ndma.gov.in/"
+    "cap_public_website/rss/rss_india.xml"
+)
+
+SACHET_CAP_BASE_URL = (
+    "https://sachet.ndma.gov.in/"
+    "cap_public_website/FetchXMLFile"
+)
+
+sachet_alert_cache: dict[str, dict[str, Any]] = {}
+sachet_seen_feed_ids: dict[str, str] = {}
+sachet_rss_etag: str | None = None
+sachet_last_poll: float = 0.0
+
+SACHET_POLL_SECONDS = 60
+SACHET_MAX_NEW_ALERTS_PER_POLL = 20
+# ============================================================
+# SACHET AUTOMATIC ALERT POLLER
+# ============================================================
+
+async def poll_sachet_alerts() -> None:
+    """
+    Continuously check the official SACHET RSS feed.
+
+    New alerts and updated alerts are fetched from the official
+    CAP XML endpoint and stored in the local alert cache.
+    """
+
+    global sachet_last_poll
+
+    while True:
+        try:
+            discovered = await fetch_sachet_rss_alerts()
+
+            new_count = 0
+
+            for item in discovered:
+                identifier = item["identifier"]
+
+                if new_count >= SACHET_MAX_NEW_ALERTS_PER_POLL:
+                    break
+
+                try:
+                    alert = await fetch_sachet_cap_alert(identifier)
+
+                    if not alert:
+                        continue
+
+                    cap_identifier = alert.get("identifier")
+
+                    previous_cap_identifier = sachet_seen_feed_ids.get(
+                        identifier
+                    )
+
+                    # Skip only when this RSS alert points to
+                    # the exact same CAP alert we already processed.
+                    if (
+                        previous_cap_identifier
+                        and previous_cap_identifier == cap_identifier
+                    ):
+                        continue
+
+                    # Remember the latest CAP version for this RSS identifier.
+                    sachet_seen_feed_ids[identifier] = (
+                        cap_identifier or identifier
+                    )
+
+                    # Store the complete official alert.
+                    sachet_alert_cache[identifier] = {
+                        **alert,
+                        "rss_title": item.get("title"),
+                        "rss_link": item.get("link"),
+                        "rss_published": item.get("published"),
+                    }
+
+                    new_count += 1
+
+                except Exception as alert_error:
+                    print(
+                        f"[SACHET] Failed to fetch alert "
+                        f"{identifier}: {alert_error}"
+                    )
+
+            sachet_last_poll = time.time()
+
+            if new_count:
+                print(
+                    f"[SACHET] Added/updated "
+                    f"{new_count} official alert(s)"
+                )
+
+        except Exception as error:
+            print(f"[SACHET] Polling error: {error}")
+
+        await asyncio.sleep(SACHET_POLL_SECONDS)
+
+# ============================================================
+# FASTAPI LIFESPAN / APP
+# ============================================================
 # ============================================================
 # FASTAPI LIFESPAN / APP
 # ============================================================
@@ -111,7 +220,8 @@ async def lifespan(app: FastAPI):
     print("Intelligence   : ECMWF + Ensemble")
     print("API server     : http://127.0.0.1:8000")
     print("==========================================")
-
+    # Start automatic SACHET / NDMA official alert polling
+    sachet_task = asyncio.create_task(poll_sachet_alerts())
     yield
 
     await http_client.aclose()
@@ -138,7 +248,240 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# ============================================================
+# SACHET CAP XML PARSER
+# ============================================================
 
+def sachet_local_name(tag: str) -> str:
+    """Return an XML tag name without its namespace."""
+    return tag.rsplit("}", 1)[-1]
+
+
+def sachet_child_text(element: ET.Element, name: str) -> str | None:
+    """Find the first child element by local XML name."""
+    for child in element.iter():
+        if sachet_local_name(child.tag) == name:
+            value = child.text
+            if value:
+                return value.strip()
+    return None
+
+
+def parse_sachet_cap_xml(xml_text: str) -> dict[str, Any]:
+    """
+    Parse an official SACHET CAP 1.2 alert.
+
+    The parser intentionally keeps the source information intact.
+    Zephyr Ai does not invent or modify the official warning.
+    """
+
+    root = ET.fromstring(xml_text)
+
+    info = None
+    for element in root.iter():
+        if sachet_local_name(element.tag) == "info":
+            info = element
+            break
+
+    if info is None:
+        raise ValueError("SACHET CAP alert does not contain an info section.")
+
+    area = None
+    for element in info.iter():
+        if sachet_local_name(element.tag) == "area":
+            area = element
+            break
+
+    parameters = {}
+
+    for parameter in info.iter():
+        if sachet_local_name(parameter.tag) != "parameter":
+            continue
+
+        value_name = None
+        value = None
+
+        for child in parameter:
+            child_name = sachet_local_name(child.tag)
+
+            if child_name == "valueName":
+                value_name = (child.text or "").strip()
+
+            elif child_name == "value":
+                value = (child.text or "").strip()
+
+        if value_name and value:
+            parameters[value_name] = value
+
+    polygon_url = parameters.get("Polygon URL")
+
+    return {
+        "identifier": sachet_child_text(root, "identifier"),
+        "sender": sachet_child_text(root, "sender"),
+        "sent": sachet_child_text(root, "sent"),
+        "status": sachet_child_text(root, "status"),
+        "message_type": sachet_child_text(root, "msgType"),
+        "scope": sachet_child_text(root, "scope"),
+
+        "language": sachet_child_text(info, "language"),
+        "category": sachet_child_text(info, "category"),
+        "event": sachet_child_text(info, "event"),
+        "urgency": sachet_child_text(info, "urgency"),
+        "severity": sachet_child_text(info, "severity"),
+        "certainty": sachet_child_text(info, "certainty"),
+        "audience": sachet_child_text(info, "audience"),
+        "effective": sachet_child_text(info, "effective"),
+        "onset": sachet_child_text(info, "onset"),
+        "expires": sachet_child_text(info, "expires"),
+        "headline": sachet_child_text(info, "headline"),
+        "description": sachet_child_text(info, "description"),
+        "instruction": sachet_child_text(info, "instruction"),
+
+        "area": (
+            sachet_child_text(area, "areaDesc")
+            if area is not None
+            else None
+        ),
+
+        "altitude": (
+            sachet_child_text(area, "altitude")
+            if area is not None
+            else None
+        ),
+
+        "ceiling": (
+            sachet_child_text(area, "ceiling")
+            if area is not None
+            else None
+        ),
+
+        "polygon_url": polygon_url,
+        "parameters": parameters,
+
+        "source": "SACHET / NDMA official CAP feed",
+        "official": True,
+    }
+# ============================================================
+# SACHET CAP FETCHER WITH ETAG CACHING
+# ============================================================
+
+sachet_cap_etags: dict[str, str] = {}
+
+
+async def fetch_sachet_cap_alert(identifier: str) -> dict[str, Any] | None:
+    """
+    Fetch one official SACHET CAP alert.
+
+    Uses the ETag mechanism required by the SACHET
+    CAP XML integration guide.
+    """
+
+    if http_client is None:
+        raise RuntimeError("HTTP client is not initialized.")
+
+    headers = {
+        "Accept": "application/xml, text/xml",
+    }
+
+    previous_etag = sachet_cap_etags.get(identifier)
+
+    if previous_etag:
+        headers["If-None-Match"] = previous_etag
+
+    response = await http_client.get(
+        SACHET_CAP_BASE_URL,
+        params={"identifier": identifier},
+        headers=headers,
+    )
+
+    # Alert has not changed.
+    if response.status_code == 304:
+        return sachet_alert_cache.get(identifier)
+
+    response.raise_for_status()
+
+    new_etag = response.headers.get("ETag")
+
+    if new_etag:
+        sachet_cap_etags[identifier] = new_etag
+
+    alert = parse_sachet_cap_xml(response.text)
+
+    sachet_alert_cache[identifier] = alert
+
+    return alert
+# ============================================================
+# SACHET RSS FEED READER
+# ============================================================
+
+async def fetch_sachet_rss_alerts() -> list[dict[str, Any]]:
+    """
+    Read the official SACHET All-India RSS feed and return
+    the latest CAP alert identifiers.
+
+    The RSS feed is only used to discover alerts.
+    Full alert information is obtained from the official
+    CAP XML endpoint.
+    """
+
+    global sachet_rss_etag
+
+    if http_client is None:
+        raise RuntimeError("HTTP client is not initialized.")
+
+    headers = {
+        "Accept": "application/rss+xml, application/xml, text/xml",
+    }
+
+    if sachet_rss_etag:
+        headers["If-None-Match"] = sachet_rss_etag
+
+    response = await http_client.get(
+        SACHET_RSS_URL,
+        headers=headers,
+    )
+
+    if response.status_code == 304:
+        return []
+
+    response.raise_for_status()
+
+    new_etag = response.headers.get("ETag")
+
+    if new_etag:
+        sachet_rss_etag = new_etag
+
+    root = ET.fromstring(response.text)
+
+    discovered = []
+
+    for item in root.iter():
+        if sachet_local_name(item.tag) != "item":
+            continue
+
+        title = sachet_child_text(item, "title")
+        link = sachet_child_text(item, "link")
+        pub_date = sachet_child_text(item, "pubDate")
+
+        if not link:
+            continue
+
+        parsed = urlparse(link)
+        query = parse_qs(parsed.query)
+
+        identifier = query.get("identifier", [None])[0]
+
+        if not identifier:
+            continue
+
+        discovered.append({
+            "identifier": identifier,
+            "title": title,
+            "link": link,
+            "published": pub_date,
+        })
+
+    return discovered
 # ============================================================
 # BASIC HELPERS
 # ============================================================
@@ -1002,7 +1345,26 @@ async def get_single_weather(location_id: str):
         raise HTTPException(status_code=502, detail=f"Weather API request failed: {error}")
     except Exception as error:
         raise HTTPException(status_code=500, detail=str(error))
+# ============================================================
+# SACHET OFFICIAL ALERTS API
+# ============================================================
 
+@app.get("/api/alerts")
+async def get_sachet_alerts():
+    """
+    Return current official SACHET / NDMA alerts
+    collected by the background polling service.
+    """
+
+    alerts = list(sachet_alert_cache.values())
+
+    return {
+        "success": True,
+        "source": "SACHET / NDMA official CAP feed",
+        "official": True,
+        "count": len(alerts),
+        "alerts": alerts,
+    }
     # ============================================================
 # ZEPHYR AI — PHASE 3: RISK & ALERT ENGINE
 # ============================================================
