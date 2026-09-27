@@ -1,0 +1,2852 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Zephyr AI — Weather Intelligence</title>
+
+    <!-- Leaflet Map -->
+    <link
+        rel="stylesheet"
+        href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    />
+
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        :root {
+            --bg: #07111f;
+            --panel: #0c1929;
+            --panel-light: #102238;
+            --border: rgba(255, 255, 255, 0.09);
+            --text: #edf5ff;
+            --muted: #8ea4bb;
+            --accent: #55c7ff;
+            --green: #35d49a;
+            --yellow: #f5c451;
+            --red: #ff647c;
+        }
+
+        body {
+            min-height: 100vh;
+            background:
+                radial-gradient(
+                    circle at 80% 10%,
+                    rgba(42, 126, 190, 0.14),
+                    transparent 30%
+                ),
+                var(--bg);
+            color: var(--text);
+            font-family:
+                Inter,
+                Segoe UI,
+                Arial,
+                sans-serif;
+        }
+
+        button {
+            font: inherit;
+        }
+
+        /* =========================
+           TOP BAR
+        ========================= */
+
+        .topbar {
+            height: 72px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 24px;
+            border-bottom: 1px solid var(--border);
+            background: rgba(7, 17, 31, 0.94);
+            backdrop-filter: blur(12px);
+            position: relative;
+            z-index: 1000;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 13px;
+        }
+
+        .brand-logo {
+            width: 38px;
+            height: 38px;
+            border-radius: 11px;
+            display: grid;
+            place-items: center;
+            background: linear-gradient(
+                135deg,
+                #1c9fe8,
+                #65e0ff
+            );
+            color: #00111d;
+            font-weight: 900;
+            font-size: 18px;
+        }
+
+        .brand h1 {
+            font-size: 17px;
+            letter-spacing: 0.8px;
+        }
+
+        .brand p {
+            font-size: 11px;
+            color: var(--muted);
+            margin-top: 3px;
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            padding: 8px 13px;
+            font-size: 12px;
+            color: var(--muted);
+            background: rgba(255, 255, 255, 0.025);
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--yellow);
+        }
+
+        .status.online .status-dot {
+            background: var(--green);
+            box-shadow: 0 0 10px rgba(53, 212, 154, 0.8);
+        }
+
+        .status.offline .status-dot {
+            background: var(--red);
+        }
+
+        .sync-button {
+            border: 1px solid rgba(85, 199, 255, 0.35);
+            background: rgba(85, 199, 255, 0.08);
+            color: var(--accent);
+            padding: 9px 14px;
+            border-radius: 9px;
+            cursor: pointer;
+        }
+
+        .sync-button:hover {
+            background: rgba(85, 199, 255, 0.15);
+        }
+
+        /* =========================
+           MAIN LAYOUT
+        ========================= */
+
+        .layout {
+            display: grid;
+            grid-template-columns: 270px 1fr;
+            min-height: calc(100vh - 72px);
+        }
+
+        /* =========================
+           SIDEBAR
+        ========================= */
+
+        .sidebar {
+            border-right: 1px solid var(--border);
+            background: rgba(6, 16, 29, 0.72);
+            padding: 22px 17px;
+        }
+
+        .section-title {
+            color: var(--muted);
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            margin-bottom: 12px;
+        }
+
+        .source-card {
+            border: 1px solid var(--border);
+            background: rgba(255, 255, 255, 0.025);
+            border-radius: 12px;
+            padding: 13px;
+            margin-bottom: 22px;
+        }
+
+        .source-name {
+            font-size: 13px;
+            font-weight: 700;
+        }
+
+        .source-desc {
+            color: var(--muted);
+            font-size: 11px;
+            line-height: 1.5;
+            margin-top: 5px;
+        }
+
+        .source-live {
+            color: var(--green);
+            font-size: 10px;
+            margin-top: 10px;
+        }
+
+        .layer {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 11px 9px;
+            border-radius: 9px;
+            margin-bottom: 5px;
+            background: rgba(255, 255, 255, 0.025);
+            border: 1px solid transparent;
+        }
+
+        .layer.active {
+            border-color: rgba(85, 199, 255, 0.18);
+            background: rgba(85, 199, 255, 0.06);
+        }
+
+        .layer-dot {
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            background: var(--accent);
+        }
+
+        .layer-text {
+            font-size: 12px;
+        }
+
+        .layer-sub {
+            color: var(--muted);
+            font-size: 9px;
+            margin-top: 3px;
+        }
+
+        .disabled-layer {
+            opacity: 0.42;
+        }
+
+        .disclaimer {
+            margin-top: 25px;
+            padding: 12px;
+            border-radius: 10px;
+            border: 1px solid rgba(245, 196, 81, 0.15);
+            background: rgba(245, 196, 81, 0.035);
+            color: #cbbf9c;
+            font-size: 10px;
+            line-height: 1.55;
+        }
+
+        /* =========================
+           MAIN CONTENT
+        ========================= */
+
+        .main {
+            position: relative;
+            min-width: 0;
+            padding: 18px;
+        }
+
+        .toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 14px;
+        }
+
+        .toolbar h2 {
+            font-size: 15px;
+        }
+
+        .toolbar p {
+            color: var(--muted);
+            font-size: 11px;
+            margin-top: 4px;
+        }
+
+        .data-badge {
+            border: 1px solid rgba(53, 212, 154, 0.22);
+            color: var(--green);
+            background: rgba(53, 212, 154, 0.05);
+            padding: 7px 10px;
+            border-radius: 8px;
+            font-size: 10px;
+        }
+
+        /* =========================
+           LOCATION SEARCH
+        ========================= */
+
+        .toolbar-actions {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .location-search {
+            position: relative;
+            width: min(420px, 42vw);
+            z-index: 1200;
+        }
+
+        .search-row {
+            display: flex;
+            gap: 6px;
+        }
+
+        .location-search input {
+            width: 100%;
+            min-width: 150px;
+            border: 1px solid var(--border);
+            border-radius: 9px;
+            padding: 9px 11px;
+            outline: none;
+            background: rgba(255, 255, 255, 0.045);
+            color: var(--text);
+            font: inherit;
+            font-size: 11px;
+        }
+
+        .location-search input::placeholder {
+            color: var(--muted);
+        }
+
+        .location-search input:focus {
+            border-color: rgba(85, 199, 255, 0.55);
+            box-shadow: 0 0 0 3px rgba(85, 199, 255, 0.07);
+        }
+
+        .search-button,
+        .location-button {
+            border: 1px solid rgba(85, 199, 255, 0.35);
+            background: rgba(85, 199, 255, 0.08);
+            color: var(--accent);
+            border-radius: 9px;
+            padding: 9px 11px;
+            cursor: pointer;
+            font-size: 11px;
+            white-space: nowrap;
+        }
+
+        .search-button:hover,
+        .location-button:hover {
+            background: rgba(85, 199, 255, 0.16);
+        }
+
+        .search-results {
+            position: absolute;
+            top: calc(100% + 6px);
+            left: 0;
+            right: 0;
+            display: none;
+            max-height: 280px;
+            overflow-y: auto;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            background: rgba(6, 16, 29, 0.97);
+            box-shadow: 0 18px 45px rgba(0, 0, 0, 0.35);
+            backdrop-filter: blur(14px);
+        }
+
+        .search-results.show {
+            display: block;
+        }
+
+        .search-result {
+            width: 100%;
+            border: none;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+            background: transparent;
+            color: var(--text);
+            text-align: left;
+            padding: 11px 12px;
+            cursor: pointer;
+        }
+
+        .search-result:last-child {
+            border-bottom: none;
+        }
+
+        .search-result:hover {
+            background: rgba(85, 199, 255, 0.08);
+        }
+
+        .search-result-name {
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        .search-result-meta {
+            margin-top: 3px;
+            color: var(--muted);
+            font-size: 9px;
+        }
+
+        .search-message {
+            padding: 12px;
+            color: var(--muted);
+            font-size: 10px;
+        }
+
+        .custom-location-badge {
+            margin-top: 8px;
+            color: var(--accent);
+            font-size: 9px;
+        }
+
+        /* =========================
+           MAP
+        ========================= */
+
+        .map-wrapper {
+            position: relative;
+            height: 58vh;
+            min-height: 430px;
+            border: 1px solid var(--border);
+            border-radius: 15px;
+            overflow: hidden;
+            background: #091827;
+        }
+
+        #map {
+            width: 100%;
+            height: 100%;
+        }
+
+        .map-overlay {
+            position: absolute;
+            top: 15px;
+            left: 15px;
+            z-index: 500;
+            padding: 11px 13px;
+            border-radius: 10px;
+            background: rgba(6, 16, 29, 0.88);
+            border: 1px solid var(--border);
+            backdrop-filter: blur(10px);
+        }
+
+        .map-overlay-title {
+            font-size: 11px;
+            font-weight: 700;
+        }
+
+        .map-overlay-sub {
+            font-size: 9px;
+            color: var(--muted);
+            margin-top: 4px;
+        }
+
+        /* =========================
+           LOCATION CARD
+        ========================= */
+
+        .location-panel {
+            margin-top: 14px;
+            display: grid;
+            grid-template-columns: 1.2fr 2fr;
+            gap: 14px;
+        }
+
+        .panel {
+            background: rgba(12, 25, 41, 0.8);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 17px;
+        }
+
+        .selected-location {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+        }
+
+        .location-name {
+            font-size: 18px;
+            font-weight: 750;
+        }
+
+        .location-state {
+            color: var(--muted);
+            font-size: 11px;
+            margin-top: 5px;
+        }
+
+        .risk {
+            padding: 6px 9px;
+            border-radius: 7px;
+            font-size: 10px;
+            font-weight: 800;
+        }
+
+        .risk.low {
+            color: var(--green);
+            background: rgba(53, 212, 154, 0.09);
+        }
+
+        .risk.moderate {
+            color: var(--yellow);
+            background: rgba(245, 196, 81, 0.09);
+        }
+
+        .risk.high {
+            color: var(--red);
+            background: rgba(255, 100, 124, 0.09);
+        }
+
+        .condition {
+            margin-top: 22px;
+            font-size: 14px;
+            color: var(--accent);
+        }
+
+        .observation-time {
+            color: var(--muted);
+            font-size: 10px;
+            margin-top: 7px;
+        }
+
+        .metrics {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 9px;
+        }
+
+        .metric {
+            padding: 13px;
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.025);
+            border: 1px solid rgba(255, 255, 255, 0.055);
+        }
+
+        .metric-label {
+            color: var(--muted);
+            font-size: 9px;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+        }
+
+        .metric-value {
+            font-size: 17px;
+            font-weight: 700;
+            margin-top: 8px;
+        }
+
+        .metric-unit {
+            color: var(--muted);
+            font-size: 9px;
+        }
+
+        /* =========================
+           FORECAST
+        ========================= */
+
+        .forecast-panel {
+            margin-top: 14px;
+        }
+
+        .forecast-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .forecast-header h3 {
+            font-size: 13px;
+        }
+
+        .forecast-header span {
+            color: var(--muted);
+            font-size: 10px;
+        }
+
+        .forecast-scroll {
+            display: grid;
+            grid-template-columns: repeat(8, minmax(90px, 1fr));
+            gap: 8px;
+            overflow-x: auto;
+        }
+
+        .forecast-item {
+            min-width: 90px;
+            padding: 11px;
+            border-radius: 9px;
+            background: rgba(255, 255, 255, 0.025);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .forecast-time {
+            font-size: 9px;
+            color: var(--muted);
+        }
+
+        .forecast-temp {
+            font-size: 17px;
+            font-weight: 700;
+            margin-top: 9px;
+        }
+
+        .forecast-condition {
+            font-size: 9px;
+            color: var(--accent);
+            margin-top: 5px;
+            min-height: 23px;
+        }
+
+        .rain-prob {
+            margin-top: 8px;
+            color: var(--muted);
+            font-size: 9px;
+        }
+
+        /* =========================
+           LEAFLET
+        ========================= */
+
+        .leaflet-control-zoom a {
+            background: #0c1929 !important;
+            color: white !important;
+            border-color: var(--border) !important;
+        }
+
+        .leaflet-control-attribution {
+            background: rgba(6, 16, 29, 0.8) !important;
+            color: #8ea4bb !important;
+        }
+
+        .leaflet-control-attribution a {
+            color: #55c7ff !important;
+        }
+
+        /* =========================
+           RESPONSIVE
+        ========================= */
+
+        @media (max-width: 1100px) {
+            .toolbar {
+                align-items: flex-start;
+                gap: 10px;
+                flex-wrap: wrap;
+            }
+
+            .toolbar-actions {
+                width: 100%;
+                justify-content: space-between;
+            }
+
+            .location-search {
+                width: min(560px, 100%);
+            }
+        }
+
+        @media (max-width: 950px) {
+            .layout {
+                grid-template-columns: 1fr;
+            }
+
+            .sidebar {
+                border-right: none;
+                border-bottom: 1px solid var(--border);
+            }
+
+            .location-panel {
+                grid-template-columns: 1fr;
+            }
+
+            .forecast-scroll {
+                grid-template-columns: repeat(8, 100px);
+            }
+        }
+
+        @media (max-width: 650px) {
+            .toolbar-actions {
+                align-items: stretch;
+                flex-direction: column;
+            }
+
+            .location-search {
+                width: 100%;
+            }
+
+            .data-badge {
+                align-self: flex-start;
+            }
+
+            .topbar {
+                padding: 0 12px;
+            }
+
+            .header-right .sync-button {
+                display: none;
+            }
+
+            .main {
+                padding: 10px;
+            }
+
+            .metrics {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .map-wrapper {
+                height: 55vh;
+            }
+        }
+
+
+        /* =========================
+           PHASE 2 — INTELLIGENCE CHARTS
+        ========================= */
+        .intelligence-section { margin-top: 18px; }
+        .intelligence-head { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px; }
+        .intelligence-head h3 { margin:0; font-size:15px; letter-spacing:.2px; }
+        .intelligence-head span { color:#8ea4bb; font-size:11px; }
+        .intel-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; }
+        .intel-card { background:rgba(9,22,38,.92); border:1px solid #20354b; border-radius:12px; padding:13px; min-height:82px; }
+        .intel-label { color:#8ea4bb; font-size:10px; text-transform:uppercase; letter-spacing:.08em; margin-bottom:7px; }
+        .intel-value { color:#eef7ff; font-size:21px; font-weight:700; }
+        .intel-sub { color:#8ea4bb; font-size:10px; margin-top:4px; line-height:1.4; }
+        .intel-level { display:inline-flex; align-items:center; padding:4px 8px; border-radius:999px; font-size:10px; font-weight:800; letter-spacing:.06em; background:#17304a; color:#bfe9ff; }
+        .intel-level.medium { background:#493a16; color:#ffe18a; }
+        .intel-level.high { background:#4b2029; color:#ffb5c0; }
+        .chart-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:14px; }
+        .chart-card { background:rgba(7,18,31,.96); border:1px solid #20354b; border-radius:14px; padding:15px; min-width:0; }
+        .chart-title { display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:12px; }
+        .chart-title strong { font-size:13px; color:#eef7ff; }
+        .chart-title span { font-size:10px; color:#8ea4bb; }
+        .chart-wrap { position:relative; height:280px; }
+        .chart-note { color:#7e94aa; font-size:10px; line-height:1.5; margin-top:9px; }
+        .why-card { margin-top:14px; background:linear-gradient(135deg,rgba(16,38,59,.96),rgba(8,22,37,.96)); border:1px solid #2b4964; border-radius:14px; padding:15px; }
+        .why-title { color:#8edcff; font-size:10px; text-transform:uppercase; letter-spacing:.1em; font-weight:800; margin-bottom:7px; }
+        .why-text { color:#dcecff; font-size:12px; line-height:1.65; }
+        .risk-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-top:14px; }
+        .risk-card { border:1px solid #20354b; background:rgba(9,22,38,.92); border-radius:12px; padding:12px; }
+        .risk-card strong { display:block; font-size:11px; color:#dcecff; margin-bottom:7px; }
+        .risk-bar { height:6px; background:#172a3c; border-radius:99px; overflow:hidden; }
+        .risk-bar > span { display:block; height:100%; width:0; border-radius:99px; background:#55c7ff; transition:width .35s ease; }
+        .risk-meta { display:flex; justify-content:space-between; color:#8ea4bb; font-size:10px; margin-top:6px; }
+        .intel-loading { color:#8ea4bb; font-size:11px; padding:16px 0; }
+        @media (max-width: 900px) { .intel-grid { grid-template-columns:repeat(2,1fr); } .chart-grid { grid-template-columns:1fr; } }
+        @media (max-width: 600px) { .intel-grid,.risk-grid { grid-template-columns:1fr 1fr; } .chart-wrap { height:230px; } }
+
+
+
+        /* =========================
+           PHASE 3 — RISK & ALERT ENGINE
+        ========================= */
+        .weather-risk-section { margin-top:18px; }
+        .weather-risk-panel {
+            background:rgba(7,18,31,.96);
+            border:1px solid #20354b;
+            border-radius:14px;
+            padding:15px;
+        }
+        .weather-risk-head {
+            display:flex;
+            justify-content:space-between;
+            align-items:center;
+            gap:12px;
+            margin-bottom:14px;
+        }
+        .weather-risk-title { font-size:15px; font-weight:700; }
+        .weather-risk-subtitle { color:#8ea4bb; font-size:10px; margin-top:4px; }
+        .weather-risk-badge {
+            display:inline-flex;
+            align-items:center;
+            justify-content:center;
+            padding:6px 10px;
+            border-radius:999px;
+            font-size:10px;
+            font-weight:800;
+            letter-spacing:.06em;
+            border:1px solid transparent;
+        }
+        .weather-risk-badge.low { background:rgba(53,212,154,.09); color:#35d49a; border-color:rgba(53,212,154,.2); }
+        .weather-risk-badge.moderate { background:rgba(245,196,81,.09); color:#f5c451; border-color:rgba(245,196,81,.2); }
+        .weather-risk-badge.high { background:rgba(255,100,124,.09); color:#ff647c; border-color:rgba(255,100,124,.2); }
+        .weather-risk-score-row { display:flex; align-items:center; gap:10px; margin-bottom:14px; }
+        .weather-risk-score { font-size:34px; font-weight:800; line-height:1; }
+        .weather-risk-score-max { color:#8ea4bb; font-size:10px; line-height:1.45; }
+        .weather-critical-window {
+            padding:14px;
+            border-radius:12px;
+            background:rgba(85,199,255,.045);
+            border:1px solid rgba(85,199,255,.12);
+        }
+        .weather-critical-label { color:#8edcff; font-size:9px; text-transform:uppercase; letter-spacing:.1em; font-weight:800; margin-bottom:7px; }
+        .weather-critical-time { font-size:16px; font-weight:700; margin-bottom:7px; }
+        .weather-critical-reasons { color:#b8c9d9; font-size:11px; line-height:1.55; }
+        .weather-risk-timeline {
+            display:grid;
+            grid-template-columns:repeat(6, minmax(90px, 1fr));
+            gap:8px;
+            margin-top:12px;
+            overflow-x:auto;
+        }
+        .weather-risk-time-card {
+            min-width:90px;
+            padding:10px;
+            border-radius:10px;
+            background:rgba(255,255,255,.025);
+            border:1px solid rgba(255,255,255,.055);
+        }
+        .weather-risk-time { color:#8ea4bb; font-size:9px; }
+        .weather-risk-time-score { font-size:18px; font-weight:700; margin-top:7px; }
+        .weather-risk-time-level { color:#8ea4bb; font-size:9px; margin-top:3px; }
+        .weather-risk-time-card.low .weather-risk-time-score { color:#35d49a; }
+        .weather-risk-time-card.moderate .weather-risk-time-score { color:#f5c451; }
+        .weather-risk-time-card.high .weather-risk-time-score { color:#ff647c; }
+        .weather-risk-note { color:#71869a; font-size:9px; line-height:1.5; margin-top:11px; }
+        .weather-risk-loading { color:#8ea4bb; font-size:11px; padding:12px 0; }
+        .weather-risk-error { color:#ff647c; font-size:11px; padding:12px 0; }
+        @media (max-width:900px) {
+            .weather-risk-timeline { grid-template-columns:repeat(4, minmax(90px, 1fr)); }
+        }
+        @media (max-width:600px) {
+            .weather-risk-head { align-items:flex-start; flex-direction:column; }
+            .weather-risk-timeline { grid-template-columns:repeat(2, minmax(90px, 1fr)); }
+        }
+
+    </style>
+</head>
+
+<body>
+
+<header class="topbar">
+
+    <div class="brand">
+        <div class="brand-logo">Z</div>
+
+        <div>
+            <h1>PROJECT ZEPHYR</h1>
+            <p>Weather Intelligence & Forecast Monitoring</p>
+        </div>
+    </div>
+
+    <div class="header-right">
+
+        <div
+            id="connectionStatus"
+            class="status"
+        >
+            <span class="status-dot"></span>
+            <span id="connectionText">
+                Connecting...
+            </span>
+        </div>
+
+        <button
+            class="sync-button"
+            onclick="syncWeather(true)"
+        >
+            ↻ Sync Now
+        </button>
+
+    </div>
+
+</header>
+
+
+<div class="layout">
+
+    <!-- =========================
+         SIDEBAR
+    ========================== -->
+
+    <aside class="sidebar">
+
+        <div class="section-title">
+            Data Source
+        </div>
+
+        <div class="source-card">
+
+            <div class="source-name">
+                Open-Meteo
+            </div>
+
+            <div class="source-desc">
+                Live weather observations and
+                forecast data delivered through
+                the Zephyr backend.
+            </div>
+
+            <div class="source-live">
+                ● API Connected
+            </div>
+
+        </div>
+
+
+        <div class="section-title">
+            Active Layers
+        </div>
+
+        <div class="layer active">
+            <div
+                class="layer-dot"
+                style="background:#55c7ff"
+            ></div>
+
+            <div>
+                <div class="layer-text">
+                    Weather Intelligence
+                </div>
+
+                <div class="layer-sub">
+                    Current conditions
+                </div>
+            </div>
+        </div>
+
+
+        <div class="layer active">
+            <div
+                class="layer-dot"
+                style="background:#35d49a"
+            ></div>
+
+            <div>
+                <div class="layer-text">
+                    Forecast Layer
+                </div>
+
+                <div class="layer-sub">
+                    Hourly prediction
+                </div>
+            </div>
+        </div>
+
+
+        <div class="layer active">
+            <div
+                class="layer-dot"
+                style="background:#f5c451"
+            ></div>
+
+            <div>
+                <div class="layer-text">
+                    Precipitation
+                </div>
+
+                <div class="layer-sub">
+                    Rain probability & amount
+                </div>
+            </div>
+        </div>
+
+
+        <div class="layer disabled-layer">
+            <div
+                class="layer-dot"
+                style="background:#8ea4bb"
+            ></div>
+
+            <div>
+                <div class="layer-text">
+                    Doppler Radar
+                </div>
+
+                <div class="layer-sub">
+                    Not connected
+                </div>
+            </div>
+        </div>
+
+
+        <div class="disclaimer">
+            <strong>Data integrity</strong><br><br>
+
+            Zephyr does not generate fake
+            sensor values. If an external
+            source is unavailable, the UI
+            displays the missing state instead
+            of inventing telemetry.
+        </div>
+
+    </aside>
+
+
+    <!-- =========================
+         MAIN
+    ========================== -->
+
+    <main class="main">
+
+        <div class="toolbar">
+
+            <div>
+                <h2>
+                    National Weather Mesh
+                </h2>
+
+                <p id="lastSync">
+                    Waiting for first synchronization...
+                </p>
+            </div>
+
+            <div class="toolbar-actions">
+
+                <div class="location-search">
+                    <div class="search-row">
+                        <input
+                            id="locationSearch"
+                            type="search"
+                            placeholder="Search any city..."
+                            autocomplete="off"
+                        />
+
+                        <button
+                            id="searchButton"
+                            class="search-button"
+                            type="button"
+                            onclick="searchLocation()"
+                        >
+                            Search
+                        </button>
+
+                        <button
+                            id="geoButton"
+                            class="location-button"
+                            type="button"
+                            onclick="useMyLocation()"
+                            title="Use your current browser location"
+                        >
+                            📍
+                        </button>
+                    </div>
+
+                    <div
+                        id="searchResults"
+                        class="search-results"
+                    ></div>
+                </div>
+
+                <div class="data-badge">
+                    ● LIVE API DATA
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <!-- MAP -->
+
+        <div class="map-wrapper">
+
+            <div class="map-overlay">
+
+                <div class="map-overlay-title">
+                    Zephyr Monitoring Network
+                </div>
+
+                <div class="map-overlay-sub">
+                    Search a city, use your location, or select a marker
+                </div>
+
+            </div>
+
+            <div id="map"></div>
+
+        </div>
+
+
+        <!-- LOCATION + METRICS -->
+
+        <div class="location-panel">
+
+            <div class="panel">
+
+                <div class="selected-location">
+
+                    <div>
+                        <div
+                            id="locationName"
+                            class="location-name"
+                        >
+                            Select a location
+                        </div>
+
+                        <div
+                            id="locationState"
+                            class="location-state"
+                        >
+                            Click a map marker
+                        </div>
+                    </div>
+
+                    <div
+                        id="riskBadge"
+                        class="risk low"
+                    >
+                        —
+                    </div>
+
+                </div>
+
+
+                <div
+                    id="condition"
+                    class="condition"
+                >
+                    Waiting for weather data...
+                </div>
+
+
+                <div
+                    id="observationTime"
+                    class="observation-time"
+                >
+                    —
+                </div>
+
+            </div>
+
+
+            <div class="panel">
+
+                <div class="metrics">
+
+                    <div class="metric">
+                        <div class="metric-label">
+                            Temperature
+                        </div>
+
+                        <div
+                            id="temperature"
+                            class="metric-value"
+                        >
+                            —
+                        </div>
+                    </div>
+
+
+                    <div class="metric">
+                        <div class="metric-label">
+                            Humidity
+                        </div>
+
+                        <div
+                            id="humidity"
+                            class="metric-value"
+                        >
+                            —
+                        </div>
+                    </div>
+
+
+                    <div class="metric">
+                        <div class="metric-label">
+                            Wind
+                        </div>
+
+                        <div
+                            id="wind"
+                            class="metric-value"
+                        >
+                            —
+                        </div>
+                    </div>
+
+
+                    <div class="metric">
+                        <div class="metric-label">
+                            Rain
+                        </div>
+
+                        <div
+                            id="rain"
+                            class="metric-value"
+                        >
+                            —
+                        </div>
+                    </div>
+
+
+                    <div class="metric">
+                        <div class="metric-label">
+                            Cloud Cover
+                        </div>
+
+                        <div
+                            id="cloud"
+                            class="metric-value"
+                        >
+                            —
+                        </div>
+                    </div>
+
+
+                    <div class="metric">
+                        <div class="metric-label">
+                            Pressure
+                        </div>
+
+                        <div
+                            id="pressure"
+                            class="metric-value"
+                        >
+                            —
+                        </div>
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <!-- FORECAST -->
+
+        <div class="panel forecast-panel">
+
+            <div class="forecast-header">
+
+                <h3>
+                    24-Hour Forecast
+                </h3>
+
+                <span>
+                    Open-Meteo forecast
+                </span>
+
+            </div>
+
+            <div
+                id="forecast"
+                class="forecast-scroll"
+            >
+                <div class="forecast-item">
+                    Loading...
+                </div>
+            </div>
+
+        </div>
+
+
+
+        <!-- PHASE 2: WEATHER INTELLIGENCE -->
+        <section class="intelligence-section">
+            <div class="panel">
+                <div class="intelligence-head">
+                    <div>
+                        <h3>Zephyr AI Intelligence</h3>
+                        <span>ECMWF deterministic + 50-member ensemble uncertainty analysis</span>
+                    </div>
+                    <span id="intelUpdated">Waiting for intelligence data...</span>
+                </div>
+
+                <div id="intelLoading" class="intel-loading">Select a location to calculate forecast intelligence.</div>
+
+                <div id="intelContent" style="display:none;">
+                    <div class="intel-grid">
+                        <div class="intel-card">
+                            <div class="intel-label">Forecast confidence</div>
+                            <div id="intelConfidence" class="intel-value">—</div>
+                            <div id="intelConfidenceSub" class="intel-sub">—</div>
+                        </div>
+                        <div class="intel-card">
+                            <div class="intel-label">Model difference</div>
+                            <div id="intelModelDiff" class="intel-value">—</div>
+                            <div class="intel-sub">Average Best Match vs ECMWF</div>
+                        </div>
+                        <div class="intel-card">
+                            <div class="intel-label">Ensemble spread</div>
+                            <div id="intelSpread" class="intel-value">—</div>
+                            <div class="intel-sub">Temperature uncertainty</div>
+                        </div>
+                        <div class="intel-card">
+                            <div class="intel-label">Peak rain probability</div>
+                            <div id="intelRainPeak" class="intel-value">—</div>
+                            <div class="intel-sub">Next 24 hours</div>
+                        </div>
+                    </div>
+
+                    <div class="risk-grid">
+                        <div class="risk-card">
+                            <strong>Rain risk</strong>
+                            <div class="risk-bar"><span id="rainRiskBar"></span></div>
+                            <div class="risk-meta"><span id="rainRiskText">—</span><span>24h peak</span></div>
+                        </div>
+                        <div class="risk-card">
+                            <strong>Wind gust risk</strong>
+                            <div class="risk-bar"><span id="windRiskBar"></span></div>
+                            <div class="risk-meta"><span id="windRiskText">—</span><span>P90 gust</span></div>
+                        </div>
+                        <div class="risk-card">
+                            <strong>Forecast uncertainty</strong>
+                            <div class="risk-bar"><span id="uncertaintyBar"></span></div>
+                            <div class="risk-meta"><span id="uncertaintyText">—</span><span>Spread</span></div>
+                        </div>
+                    </div>
+
+                    <div class="chart-grid">
+                        <div class="chart-card">
+                            <div class="chart-title">
+                                <strong>24-hour temperature outlook</strong>
+                                <span>°C · P10–P90 band</span>
+                            </div>
+                            <div class="chart-wrap"><canvas id="temperatureChart"></canvas></div>
+                            <div class="chart-note">The shaded ensemble range shows forecast uncertainty rather than a guaranteed temperature range.</div>
+                        </div>
+                        <div class="chart-card">
+                            <div class="chart-title">
+                                <strong>Rain & wind risk outlook</strong>
+                                <span>% probability · km/h gust</span>
+                            </div>
+                            <div class="chart-wrap"><canvas id="riskChart"></canvas></div>
+                            <div class="chart-note">Rain bars represent the share of ensemble members producing at least 0.1 mm precipitation.</div>
+                        </div>
+                    </div>
+
+                    <div class="why-card">
+                        <div class="why-title">Why this forecast?</div>
+                        <div id="intelWhy" class="why-text">—</div>
+                    </div>
+                </div>
+            </div>
+</section>
+
+
+        <!-- PHASE 3: RISK & ALERT ENGINE -->
+        <section class="weather-risk-section">
+            <div class="weather-risk-panel">
+                <div class="weather-risk-head">
+                    <div>
+                        <div class="weather-risk-title">⚠ Weather Risk Analysis</div>
+                        <div class="weather-risk-subtitle">Ensemble-based forecast risk analysis</div>
+                    </div>
+                    <div id="weatherRiskBadge" class="weather-risk-badge low">LOW</div>
+                </div>
+
+                <div id="weatherRiskContent">
+                    <div class="weather-risk-loading">Select a location to calculate weather risk...</div>
+                </div>
+            </div>
+        </section>
+
+
+    </main>
+
+</div>
+
+
+<!-- Leaflet -->
+<script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+
+
+<script>
+
+    // ========================================================
+    // CONFIGURATION
+    // ========================================================
+
+    const API_BASE = "http://127.0.0.1:8000";
+
+
+    // ========================================================
+    // MAP
+    // ========================================================
+
+    const map = L.map("map", {
+        zoomControl: true
+    }).setView(
+        [23.5, 80.0],
+        5
+    );
+
+
+    L.tileLayer(
+        "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+        {
+            maxZoom: 18,
+            attribution:
+                '&copy; OpenStreetMap contributors'
+        }
+    ).addTo(map);
+
+
+    let markers = {};
+
+    let weatherData = null;
+
+    let selectedLocation = null;
+
+    // Dynamic/custom location selected through search or browser geolocation.
+    let customLocation = null;
+    let customMarker = null;
+
+
+    // ========================================================
+    // CONNECTION STATUS
+    // ========================================================
+
+    function setConnectionStatus(
+        online,
+        message
+    ) {
+
+        const status =
+            document.getElementById(
+                "connectionStatus"
+            );
+
+        const text =
+            document.getElementById(
+                "connectionText"
+            );
+
+        status.classList.remove(
+            "online",
+            "offline"
+        );
+
+        status.classList.add(
+            online
+                ? "online"
+                : "offline"
+        );
+
+        text.textContent = message;
+    }
+
+
+    // ========================================================
+    // FORMATTERS
+    // ========================================================
+
+    function valueOrDash(
+        value,
+        unit = ""
+    ) {
+
+        if (
+            value === null ||
+            value === undefined
+        ) {
+            return "—";
+        }
+
+        return `${value}${unit}`;
+    }
+
+
+    function formatTime(
+        time
+    ) {
+
+        if (!time) {
+            return "—";
+        }
+
+        const date =
+            new Date(time);
+
+        if (
+            Number.isNaN(
+                date.getTime()
+            )
+        ) {
+            return time;
+        }
+
+        return date.toLocaleString(
+            [],
+            {
+                weekday: "short",
+                hour: "2-digit",
+                minute: "2-digit"
+            }
+        );
+    }
+
+
+    function formatForecastTime(
+        time
+    ) {
+
+        if (!time) {
+            return "—";
+        }
+
+        const date =
+            new Date(time);
+
+        return date.toLocaleTimeString(
+            [],
+            {
+                hour: "2-digit",
+                minute: "2-digit"
+            }
+        );
+    }
+
+
+    function escapeHtml(
+        value
+    ) {
+
+        return String(value ?? "")
+            .replaceAll("&", "&amp;")
+            .replaceAll("<", "&lt;")
+            .replaceAll(">", "&gt;")
+            .replaceAll('"', "&quot;")
+            .replaceAll("'", "&#039;");
+    }
+
+
+    // ========================================================
+    // RISK
+    // ========================================================
+
+    function riskClass(
+        risk
+    ) {
+
+        if (!risk) {
+            return "low";
+        }
+
+        return risk.toLowerCase();
+    }
+
+
+
+    // ========================================================
+    // DYNAMIC LOCATION SEARCH
+    // ========================================================
+
+    function hideSearchResults() {
+        const results = document.getElementById("searchResults");
+        results.classList.remove("show");
+        results.innerHTML = "";
+    }
+
+
+    function showSearchMessage(message) {
+        const results = document.getElementById("searchResults");
+
+        results.innerHTML = `
+            <div class="search-message">
+                ${escapeHtml(message)}
+            </div>
+        `;
+
+        results.classList.add("show");
+    }
+
+
+    async function searchLocation() {
+        const input = document.getElementById("locationSearch");
+        const query = input.value.trim();
+
+        if (query.length < 2) {
+            showSearchMessage("Enter at least 2 characters.");
+            return;
+        }
+
+        showSearchMessage("Searching locations...");
+
+        try {
+            const response = await fetch(
+                `${API_BASE}/api/search?q=${encodeURIComponent(query)}`
+            );
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+
+            const data = await response.json();
+
+            if (!data.results || data.results.length === 0) {
+                showSearchMessage("No locations found.");
+                return;
+            }
+
+            renderSearchResults(data.results);
+
+        } catch (error) {
+            console.error("Location search failed:", error);
+            showSearchMessage("Location search failed. Check the backend.");
+        }
+    }
+
+
+    function renderSearchResults(results) {
+        const container = document.getElementById("searchResults");
+
+        container.innerHTML = results.map((item, index) => {
+
+            const locationLabel = [
+                item.name,
+                item.state,
+                item.country
+            ].filter(Boolean).join(", ");
+
+            const coordinates =
+                `${Number(item.latitude).toFixed(4)}, ${Number(item.longitude).toFixed(4)}`;
+
+            return `
+                <button
+                    class="search-result"
+                    type="button"
+                    onclick="selectSearchResult(${index})"
+                >
+                    <div class="search-result-name">
+                        ${escapeHtml(locationLabel)}
+                    </div>
+
+                    <div class="search-result-meta">
+                        ${escapeHtml(coordinates)}
+                        ${item.timezone ? ` · ${escapeHtml(item.timezone)}` : ""}
+                    </div>
+                </button>
+            `;
+        }).join("");
+
+        // Keep the results in memory for click handling.
+        window.__zephyrSearchResults = results;
+
+        container.classList.add("show");
+    }
+
+
+    async function selectSearchResult(index) {
+        const results = window.__zephyrSearchResults || [];
+        const item = results[index];
+
+        if (!item) {
+            return;
+        }
+
+        hideSearchResults();
+
+        await loadCoordinateWeather({
+            latitude: Number(item.latitude),
+            longitude: Number(item.longitude),
+            name: item.name,
+            city: item.name,
+            state: item.state,
+            country: item.country,
+        });
+    }
+
+
+    async function loadCoordinateWeather(location) {
+        if (
+            !Number.isFinite(location.latitude) ||
+            !Number.isFinite(location.longitude)
+        ) {
+            showSearchMessage("Invalid location coordinates.");
+            return;
+        }
+
+        setConnectionStatus(true, "Loading location...");
+
+        try {
+            const params = new URLSearchParams({
+                lat: String(location.latitude),
+                lon: String(location.longitude),
+            });
+
+            if (location.name) {
+                params.set("name", location.name);
+            }
+
+            if (location.city) {
+                params.set("city", location.city);
+            }
+
+            if (location.state) {
+                params.set("state", location.state);
+            }
+
+            if (location.country) {
+                params.set("country", location.country);
+            }
+
+            const response = await fetch(
+                `${API_BASE}/api/weather/coordinates?${params.toString()}`
+            );
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+
+            const data = await response.json();
+
+            customLocation = data;
+
+            renderCoordinateWeather(data);
+            showCustomMarker(data);
+
+            setConnectionStatus(true, "Backend Online");
+
+            document.getElementById("lastSync").textContent =
+                `Location loaded: ${data.location?.name || "Custom location"} · ${formatTime(data.observation?.time)}`;
+
+        } catch (error) {
+            console.error("Dynamic weather loading failed:", error);
+
+            setConnectionStatus(false, "Backend Offline");
+
+            document.getElementById("lastSync").textContent =
+                "Unable to load weather for this location.";
+        }
+    }
+
+
+    function showCustomMarker(data) {
+        const location = data.location;
+        const current = data.current || {};
+
+        if (!location) {
+            return;
+        }
+
+        if (customMarker) {
+            customMarker.remove();
+        }
+
+        let markerColor = "#35d49a";
+
+        if (current.risk_level === "MODERATE") {
+            markerColor = "#f5c451";
+        }
+
+        if (current.risk_level === "HIGH") {
+            markerColor = "#ff647c";
+        }
+
+        customMarker = L.circleMarker(
+            [
+                location.latitude,
+                location.longitude
+            ],
+            {
+                radius: 12,
+                color: markerColor,
+                weight: 3,
+                fillColor: markerColor,
+                fillOpacity: 0.30
+            }
+        ).addTo(map);
+
+        customMarker.bindPopup(`
+            <strong>
+                ${escapeHtml(location.name || "Selected location")}
+            </strong>
+            <br>
+            ${escapeHtml(current.condition || "Unknown")}
+            <br>
+            ${valueOrDash(current.temperature_c, " °C")}
+            <br>
+            Risk: ${escapeHtml(current.risk_level || "LOW")}
+        `).openPopup();
+
+        map.flyTo(
+            [
+                location.latitude,
+                location.longitude
+            ],
+            9,
+            {
+                duration: 0.8
+            }
+        );
+    }
+
+
+    function renderCoordinateWeather(data) {
+        if (!data || !data.location || !data.current) {
+            return;
+        }
+
+        const location = data.location;
+        const current = data.current;
+
+        document.getElementById("locationName").textContent =
+            location.name || "Selected location";
+
+        const stateParts = [
+            location.city,
+            location.state,
+            location.country
+        ].filter(Boolean);
+
+        document.getElementById("locationState").textContent =
+            stateParts.length
+                ? stateParts.join(", ")
+                : `${Number(location.latitude).toFixed(4)}, ${Number(location.longitude).toFixed(4)}`;
+
+        document.getElementById("condition").textContent =
+            current.condition || "Unknown";
+
+        document.getElementById("observationTime").textContent =
+            `Observation: ${formatTime(data.observation?.time)} · ${data.observation?.timezone || location.timezone || ""}`;
+
+        const risk = current.risk_level || "LOW";
+
+        const riskBadge =
+            document.getElementById("riskBadge");
+
+        riskBadge.textContent = `${risk} RISK`;
+        riskBadge.className = `risk ${riskClass(risk)}`;
+
+        document.getElementById("temperature").innerHTML =
+            `${valueOrDash(current.temperature_c)} <span class="metric-unit">°C</span>`;
+
+        document.getElementById("humidity").innerHTML =
+            `${valueOrDash(current.humidity_percent)} <span class="metric-unit">%</span>`;
+
+        document.getElementById("wind").innerHTML =
+            `${valueOrDash(current.wind_speed_kmh)} <span class="metric-unit">km/h</span>`;
+
+        document.getElementById("rain").innerHTML =
+            `${valueOrDash(current.precipitation_mm)} <span class="metric-unit">mm</span>`;
+
+        document.getElementById("cloud").innerHTML =
+            `${valueOrDash(current.cloud_cover_percent)} <span class="metric-unit">%</span>`;
+
+        document.getElementById("pressure").innerHTML =
+            `${valueOrDash(current.pressure_hpa)} <span class="metric-unit">hPa</span>`;
+
+        renderForecast(data.hourly || []);
+
+        loadIntelligenceForLocation(
+            location.latitude,
+            location.longitude,
+            location.name
+        );
+
+        loadRiskForLocation(
+            location.latitude,
+            location.longitude,
+            location.name
+        );
+    }
+
+
+    // ========================================================
+    // USE MY LOCATION
+    // ========================================================
+
+    function useMyLocation() {
+        if (!navigator.geolocation) {
+            setConnectionStatus(false, "Geolocation Unsupported");
+            document.getElementById("lastSync").textContent =
+                "Your browser does not support location services.";
+            return;
+        }
+
+        setConnectionStatus(true, "Getting location...");
+        document.getElementById("lastSync").textContent =
+            "Requesting your browser location permission...";
+
+        navigator.geolocation.getCurrentPosition(
+            async (position) => {
+                const latitude = position.coords.latitude;
+                const longitude = position.coords.longitude;
+
+                await loadCoordinateWeather({
+                    latitude,
+                    longitude,
+                    name: "My Location",
+                    city: "My Location",
+                });
+            },
+
+            (error) => {
+                console.error("Geolocation failed:", error);
+
+                setConnectionStatus(true, "Backend Online");
+
+                let message =
+                    "Could not access your location.";
+
+                if (error.code === 1) {
+                    message =
+                        "Location permission was denied.";
+                } else if (error.code === 2) {
+                    message =
+                        "Your location could not be determined.";
+                } else if (error.code === 3) {
+                    message =
+                        "Location request timed out.";
+                }
+
+                document.getElementById("lastSync").textContent =
+                    message;
+            },
+
+            {
+                enableHighAccuracy: true,
+                timeout: 10000,
+                maximumAge: 300000
+            }
+        );
+    }
+
+
+    // ========================================================
+    // SEARCH ENTER KEY
+    // ========================================================
+
+    document
+        .getElementById("locationSearch")
+        .addEventListener("keydown", (event) => {
+
+            if (event.key === "Enter") {
+                searchLocation();
+            }
+
+            if (event.key === "Escape") {
+                hideSearchResults();
+            }
+        });
+
+
+    // Close search suggestions when clicking outside.
+    document.addEventListener("click", (event) => {
+
+        const searchBox =
+            document.querySelector(".location-search");
+
+        if (
+            searchBox &&
+            !searchBox.contains(event.target)
+        ) {
+            hideSearchResults();
+        }
+    });
+
+
+    // ========================================================
+    // LOAD WEATHER
+    // ========================================================
+
+    async function syncWeather(
+        forceRefresh = false
+    ) {
+
+        setConnectionStatus(
+            true,
+            "Syncing..."
+        );
+
+        try {
+
+            const response =
+                await fetch(
+                    `${API_BASE}/api/weather?refresh=${forceRefresh}`
+                );
+
+            if (!response.ok) {
+                throw new Error(
+                    `HTTP ${response.status}`
+                );
+            }
+
+            weatherData =
+                await response.json();
+
+            setConnectionStatus(
+                true,
+                "Backend Online"
+            );
+
+            renderWeather(
+                weatherData
+            );
+
+        } catch (error) {
+
+            console.error(
+                "Weather sync failed:",
+                error
+            );
+
+            setConnectionStatus(
+                false,
+                "Backend Offline"
+            );
+
+            document.getElementById(
+                "lastSync"
+            ).textContent =
+                "Unable to connect to Zephyr backend.";
+        }
+    }
+
+
+    // ========================================================
+    // RENDER WEATHER
+    // ========================================================
+
+    function renderWeather(
+        data
+    ) {
+
+        if (!data) {
+            return;
+        }
+
+
+        const successful =
+            data.summary?.successful_locations
+            ?? 0;
+
+        const total =
+            data.summary?.total_locations
+            ?? 0;
+
+
+        document.getElementById(
+            "lastSync"
+        ).textContent =
+            `Last sync: ${formatTime(data.generated_at)} · ${successful}/${total} locations available`;
+
+
+        // Remove old markers
+
+        Object.values(
+            markers
+        ).forEach(
+            marker => marker.remove()
+        );
+
+        markers = {};
+
+
+        // Add new markers
+
+        data.locations.forEach(
+            location => {
+
+                if (
+                    location.error ||
+                    !location.location
+                ) {
+                    return;
+                }
+
+
+                const lat =
+                    location.location.latitude;
+
+                const lon =
+                    location.location.longitude;
+
+
+                const current =
+                    location.current;
+
+
+                const risk =
+                    current?.risk_level
+                    || "LOW";
+
+
+                let markerColor =
+                    "#35d49a";
+
+
+                if (
+                    risk === "MODERATE"
+                ) {
+                    markerColor =
+                        "#f5c451";
+                }
+
+                if (
+                    risk === "HIGH"
+                ) {
+                    markerColor =
+                        "#ff647c";
+                }
+
+
+                const marker =
+                    L.circleMarker(
+                        [lat, lon],
+                        {
+                            radius: 10,
+                            color: markerColor,
+                            weight: 2,
+                            fillColor: markerColor,
+                            fillOpacity: 0.28
+                        }
+                    );
+
+
+                marker.addTo(map);
+
+
+                marker.bindPopup(`
+                    <strong>
+                        ${escapeHtml(
+                            location.location.name
+                        )}
+                    </strong>
+                    <br>
+                    ${escapeHtml(
+                        current?.condition
+                        || "Unknown"
+                    )}
+                    <br>
+                    ${valueOrDash(
+                        current?.temperature_c,
+                        " °C"
+                    )}
+                    <br>
+                    Risk:
+                    ${escapeHtml(risk)}
+                `);
+
+
+                marker.on(
+                    "click",
+                    () => {
+
+                        selectLocation(
+                            location.id
+                        );
+
+                    }
+                );
+
+
+                markers[
+                    location.id
+                ] = marker;
+
+            }
+        );
+
+
+        // Automatically select first location
+
+        if (
+            !selectedLocation &&
+            data.locations.length > 0
+        ) {
+
+            const first =
+                data.locations.find(
+                    item => !item.error
+                );
+
+            if (first) {
+                selectLocation(
+                    first.id
+                );
+            }
+        }
+
+
+        // Keep selected location updated
+
+        if (selectedLocation) {
+
+            const exists =
+                data.locations.find(
+                    item =>
+                        item.id ===
+                        selectedLocation
+                );
+
+            if (exists) {
+
+                renderSelectedLocation(
+                    exists
+                );
+
+            }
+        }
+    }
+
+
+    // ========================================================
+    // SELECT LOCATION
+    // ========================================================
+
+    function selectLocation(
+        locationId
+    ) {
+
+        selectedLocation =
+            locationId;
+
+
+        const location =
+            weatherData?.locations?.find(
+                item =>
+                    item.id === locationId
+            );
+
+
+        if (!location) {
+            return;
+        }
+
+
+        renderSelectedLocation(
+            location
+        );
+
+
+        if (
+            markers[locationId]
+        ) {
+
+            map.flyTo(
+                [
+                    location.location.latitude,
+                    location.location.longitude
+                ],
+                7,
+                {
+                    duration: 0.8
+                }
+            );
+
+            markers[
+                locationId
+            ].openPopup();
+        }
+    }
+
+
+    // ========================================================
+    // RENDER SELECTED LOCATION
+    // ========================================================
+
+    function renderSelectedLocation(
+        location
+    ) {
+
+        if (
+            location.error
+        ) {
+
+            document.getElementById(
+                "locationName"
+            ).textContent =
+                location.location?.name
+                || "Unknown";
+
+            document.getElementById(
+                "condition"
+            ).textContent =
+                "Weather data unavailable.";
+
+            return;
+        }
+
+
+        const current =
+            location.current;
+
+
+        document.getElementById(
+            "locationName"
+        ).textContent =
+            location.location.name;
+
+
+        document.getElementById(
+            "locationState"
+        ).textContent =
+            `${location.location.city}, ${location.location.state}`;
+
+
+        document.getElementById(
+            "condition"
+        ).textContent =
+            current.condition
+            || "Unknown";
+
+
+        document.getElementById(
+            "observationTime"
+        ).textContent =
+            `Observation: ${formatTime(
+                location.observation?.time
+            )} · ${location.observation?.timezone || ""}`;
+
+
+        const risk =
+            current.risk_level
+            || "LOW";
+
+
+        const riskBadge =
+            document.getElementById(
+                "riskBadge"
+            );
+
+
+        riskBadge.textContent =
+            `${risk} RISK`;
+
+
+        riskBadge.className =
+            `risk ${riskClass(risk)}`;
+
+
+        document.getElementById(
+            "temperature"
+        ).innerHTML =
+            `${valueOrDash(
+                current.temperature_c
+            )} <span class="metric-unit">°C</span>`;
+
+
+        document.getElementById(
+            "humidity"
+        ).innerHTML =
+            `${valueOrDash(
+                current.humidity_percent
+            )} <span class="metric-unit">%</span>`;
+
+
+        document.getElementById(
+            "wind"
+        ).innerHTML =
+            `${valueOrDash(
+                current.wind_speed_kmh
+            )} <span class="metric-unit">km/h</span>`;
+
+
+        document.getElementById(
+            "rain"
+        ).innerHTML =
+            `${valueOrDash(
+                current.precipitation_mm
+            )} <span class="metric-unit">mm</span>`;
+
+
+        document.getElementById(
+            "cloud"
+        ).innerHTML =
+            `${valueOrDash(
+                current.cloud_cover_percent
+            )} <span class="metric-unit">%</span>`;
+
+
+        document.getElementById(
+            "pressure"
+        ).innerHTML =
+            `${valueOrDash(
+                current.pressure_hpa
+            )} <span class="metric-unit">hPa</span>`;
+
+
+        renderForecast(
+            location.hourly || []
+        );
+
+
+        loadIntelligenceForLocation(
+            location.location.latitude,
+            location.location.longitude,
+            location.location.name
+        );
+
+        loadRiskForLocation(
+            location.location.latitude,
+            location.location.longitude,
+            location.location.name
+        );
+    }
+
+
+    // ========================================================
+    // FORECAST
+    // ========================================================
+
+    function renderForecast(
+        forecast
+    ) {
+
+        const container =
+            document.getElementById(
+                "forecast"
+            );
+
+
+        if (
+            !forecast.length
+        ) {
+
+            container.innerHTML =
+                `<div class="forecast-item">
+                    No forecast data available.
+                </div>`;
+
+            return;
+        }
+
+
+        // Show first 8 hours
+
+        container.innerHTML =
+            forecast
+                .slice(0, 8)
+                .map(
+                    item => {
+
+                        const rain =
+                            item.precipitation_probability;
+
+
+                        return `
+                            <div class="forecast-item">
+
+                                <div class="forecast-time">
+                                    ${escapeHtml(
+                                        formatForecastTime(
+                                            item.time
+                                        )
+                                    )}
+                                </div>
+
+                                <div class="forecast-temp">
+                                    ${valueOrDash(
+                                        item.temperature_c,
+                                        "°"
+                                    )}
+                                </div>
+
+                                <div class="forecast-condition">
+                                    ${escapeHtml(
+                                        item.condition
+                                        || "Unknown"
+                                    )}
+                                </div>
+
+                                <div class="rain-prob">
+                                    Rain:
+                                    ${valueOrDash(
+                                        rain,
+                                        "%"
+                                    )}
+                                </div>
+
+                            </div>
+                        `;
+
+                    }
+                )
+                .join("");
+    }
+
+
+
+
+    // ========================================================
+    // PHASE 2 — INTELLIGENCE + CHARTS
+    // ========================================================
+
+    let temperatureChart = null;
+    let riskChart = null;
+    let intelligenceRequestId = 0;
+
+    function fmtNum(value, digits = 1) {
+        return value === null || value === undefined || Number.isNaN(Number(value))
+            ? "—"
+            : Number(value).toFixed(digits);
+    }
+
+    function chartTimeLabel(value) {
+        if (!value) return "—";
+        const d = new Date(value);
+        if (Number.isNaN(d.getTime())) return value.slice(11,16) || value;
+        return d.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"});
+    }
+
+    function setRiskBar(id, percent) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        const safe = Math.max(0, Math.min(100, Number(percent) || 0));
+        el.style.width = `${safe}%`;
+    }
+
+    function riskFromProbability(p) {
+        if (p >= 70) return "HIGH";
+        if (p >= 35) return "MODERATE";
+        return "LOW";
+    }
+
+    function windRiskPercent(gust) {
+        return Math.max(0, Math.min(100, ((Number(gust) || 0) / 70) * 100));
+    }
+
+    function uncertaintyPercent(spread) {
+        return Math.max(0, Math.min(100, ((Number(spread) || 0) / 3) * 100));
+    }
+
+    function destroyIntelligenceCharts() {
+        if (temperatureChart) {
+            temperatureChart.destroy();
+            temperatureChart = null;
+        }
+        if (riskChart) {
+            riskChart.destroy();
+            riskChart = null;
+        }
+    }
+
+    function renderTemperatureChart(ensemble, comparison) {
+        const ctx = document.getElementById("temperatureChart");
+        if (!ctx || !window.Chart) return;
+
+        const rows = (ensemble || []).slice(0, 24);
+        const labels = rows.map(x => chartTimeLabel(x.time));
+        const mean = rows.map(x => x.temperature_mean_c);
+        const p10 = rows.map(x => x.temperature_p10_c);
+        const p90 = rows.map(x => x.temperature_p90_c);
+
+        const compMap = new Map((comparison || []).map(x => [x.time, x.base_temperature_c]));
+        const ecmwfMap = new Map((comparison || []).map(x => [x.time, x.ecmwf_temperature_c]));
+        const bestMatch = rows.map(x => compMap.get(x.time) ?? null);
+        const ecmwf = rows.map(x => ecmwfMap.get(x.time) ?? null);
+
+        temperatureChart = new Chart(ctx, {
+            type: "line",
+            data: {
+                labels,
+                datasets: [
+                    {label:"Ensemble P90", data:p90, borderWidth:0, pointRadius:0, fill:false},
+                    {label:"Ensemble range", data:p10, borderWidth:0, pointRadius:0, fill:"-1", backgroundColor:"rgba(85,199,255,0.13)"},
+                    {label:"Ensemble mean", data:mean, borderWidth:2, pointRadius:0, tension:.28},
+                    {label:"Best Match", data:bestMatch, borderWidth:1.5, pointRadius:0, borderDash:[5,4], tension:.25},
+                    {label:"ECMWF HRES", data:ecmwf, borderWidth:1.5, pointRadius:0, borderDash:[2,3], tension:.25}
+                ]
+            },
+            options: {
+                responsive:true, maintainAspectRatio:false,
+                interaction:{mode:"index", intersect:false},
+                plugins:{legend:{labels:{color:"#9eb2c5", boxWidth:10, font:{size:10}}}},
+                scales:{
+                    x:{ticks:{color:"#71869a", maxTicksLimit:8, font:{size:9}}, grid:{color:"rgba(100,130,155,.08)"}},
+                    y:{ticks:{color:"#71869a", font:{size:9}}, grid:{color:"rgba(100,130,155,.08)"}}
+                }
+            }
+        });
+    }
+
+    function renderRiskChart(ensemble) {
+        const ctx = document.getElementById("riskChart");
+        if (!ctx || !window.Chart) return;
+
+        const rows = (ensemble || []).slice(0, 24);
+        const labels = rows.map(x => chartTimeLabel(x.time));
+        const rain = rows.map(x => x.rain_probability_percent);
+        const gust = rows.map(x => x.wind_gust_p90_kmh);
+
+        riskChart = new Chart(ctx, {
+            data: {
+                labels,
+                datasets: [
+                    {type:"bar", label:"Rain probability", data:rain, yAxisID:"y", borderWidth:0, borderRadius:4, backgroundColor:"rgba(85,199,255,.38)"},
+                    {type:"line", label:"P90 wind gust", data:gust, yAxisID:"y1", borderWidth:2, pointRadius:0, tension:.25}
+                ]
+            },
+            options: {
+                responsive:true, maintainAspectRatio:false,
+                interaction:{mode:"index", intersect:false},
+                plugins:{legend:{labels:{color:"#9eb2c5", boxWidth:10, font:{size:10}}}},
+                scales:{
+                    x:{ticks:{color:"#71869a", maxTicksLimit:8, font:{size:9}}, grid:{color:"rgba(100,130,155,.08)"}},
+                    y:{min:0,max:100,ticks:{color:"#71869a",font:{size:9},callback:v=>v+"%"},grid:{color:"rgba(100,130,155,.08)"}},
+                    y1:{position:"right",min:0,ticks:{color:"#71869a",font:{size:9},callback:v=>v+" km/h"},grid:{drawOnChartArea:false}}
+                }
+            }
+        });
+    }
+
+    function renderIntelligence(data) {
+        const summary = data?.summary || {};
+        const confidence = summary.confidence || {};
+        const content = document.getElementById("intelContent");
+        const loading = document.getElementById("intelLoading");
+        if (!content || !loading) return;
+
+        loading.style.display = "none";
+        content.style.display = "block";
+
+        const score = Number(confidence.score);
+        const level = confidence.level || "UNKNOWN";
+        document.getElementById("intelConfidence").innerHTML =
+            `${Number.isFinite(score) ? score : "—"}<span style="font-size:12px"> / 100</span>`;
+        document.getElementById("intelConfidenceSub").innerHTML =
+            `<span class="intel-level ${level.toLowerCase()}">${escapeHtml(level)}</span>`;
+
+        const diff = confidence.average_model_temperature_difference_c;
+        const spread = confidence.average_ensemble_temperature_spread_c;
+        const rainPeak = summary.next_24h_peak_ensemble_rain_probability_percent;
+        const gustPeak = summary.next_24h_peak_p90_wind_gust_kmh;
+
+        document.getElementById("intelModelDiff").textContent = `${fmtNum(diff)} °C`;
+        document.getElementById("intelSpread").textContent = `${fmtNum(spread)} °C`;
+        document.getElementById("intelRainPeak").textContent = `${fmtNum(rainPeak,0)}%`;
+        document.getElementById("intelUpdated").textContent = data.generated_at ? `Updated ${formatTime(data.generated_at)}` : "Updated";
+
+        document.getElementById("rainRiskText").textContent = `${fmtNum(rainPeak,0)}% · ${riskFromProbability(Number(rainPeak)||0)}`;
+        document.getElementById("windRiskText").textContent = `${fmtNum(gustPeak)} km/h`;
+        document.getElementById("uncertaintyText").textContent = `${fmtNum(spread)} °C`;
+        setRiskBar("rainRiskBar", rainPeak);
+        setRiskBar("windRiskBar", windRiskPercent(gustPeak));
+        setRiskBar("uncertaintyBar", uncertaintyPercent(spread));
+
+        const reasons = Array.isArray(confidence.reasons) ? confidence.reasons.join("; ") : "";
+        const note = data?.method?.note || "";
+        document.getElementById("intelWhy").textContent =
+            `${reasons || "The system is comparing multiple forecast signals."} ${note}`.trim();
+
+        destroyIntelligenceCharts();
+        renderTemperatureChart(data.ensemble || [], data.model_comparison || []);
+        renderRiskChart(data.ensemble || []);
+    }
+
+    async function loadIntelligenceForLocation(latitude, longitude, name) {
+        const requestId = ++intelligenceRequestId;
+        const loading = document.getElementById("intelLoading");
+        const content = document.getElementById("intelContent");
+        if (loading) {
+            loading.style.display = "block";
+            loading.textContent = "Calculating ensemble uncertainty and model agreement...";
+        }
+        if (content) content.style.display = "none";
+        destroyIntelligenceCharts();
+
+        try {
+            const params = new URLSearchParams({lat:String(latitude), lon:String(longitude)});
+            if (name) params.set("name", name);
+            const response = await fetch(`${API_BASE}/api/intelligence?${params.toString()}`);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const data = await response.json();
+            if (requestId !== intelligenceRequestId) return;
+            renderIntelligence(data);
+        } catch (error) {
+            if (requestId !== intelligenceRequestId) return;
+            console.error("Intelligence loading failed:", error);
+            if (loading) {
+                loading.style.display = "block";
+                loading.textContent = "Intelligence data is temporarily unavailable. Weather data can still be viewed above.";
+            }
+            if (content) content.style.display = "none";
+        }
+    }
+
+
+
+
+
+    // ========================================================
+    // PHASE 3 — RISK & ALERT ENGINE
+    // ========================================================
+
+    let riskRequestId = 0;
+
+    function riskLevelClass(level) {
+        const normalized = String(level || "LOW").toLowerCase();
+        if (normalized === "high") return "high";
+        if (normalized === "moderate") return "moderate";
+        return "low";
+    }
+
+    function formatRiskDateTime(timestamp) {
+        if (!timestamp) return "No critical window";
+        const date = new Date(timestamp);
+        if (Number.isNaN(date.getTime())) return String(timestamp);
+        return date.toLocaleString([], {
+            day: "2-digit",
+            month: "short",
+            hour: "2-digit",
+            minute: "2-digit"
+        });
+    }
+
+    function formatRiskHour(timestamp) {
+        if (!timestamp) return "—";
+        const date = new Date(timestamp);
+        if (Number.isNaN(date.getTime())) return String(timestamp).slice(11, 16) || String(timestamp);
+        return date.toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit"
+        });
+    }
+
+    function renderWeatherRisk(data) {
+        const content = document.getElementById("weatherRiskContent");
+        const badge = document.getElementById("weatherRiskBadge");
+        if (!content || !badge || !data) return;
+
+        const overall = data.overall || {};
+        const critical = data.critical_window || {};
+        const timeline = Array.isArray(data.timeline) ? data.timeline : [];
+        const level = String(overall.level || "LOW").toUpperCase();
+        const levelClass = riskLevelClass(level);
+        const score = Number(overall.score);
+
+        badge.textContent = level;
+        badge.className = `weather-risk-badge ${levelClass}`;
+
+        const reasons = Array.isArray(critical.reasons) ? critical.reasons : [];
+        const reasonsHtml = reasons.length
+            ? reasons.map(reason => `• ${escapeHtml(reason)}`).join("<br>")
+            : "No significant risk detected.";
+
+        const timelineHtml = timeline.map(item => {
+            const itemLevel = String(item.level || "LOW").toUpperCase();
+            const itemClass = riskLevelClass(itemLevel);
+            return `
+                <div class="weather-risk-time-card ${itemClass}">
+                    <div class="weather-risk-time">${escapeHtml(formatRiskHour(item.time))}</div>
+                    <div class="weather-risk-time-score">${Number(item.score) || 0}</div>
+                    <div class="weather-risk-time-level">${escapeHtml(itemLevel)}</div>
+                </div>
+            `;
+        }).join("");
+
+        content.innerHTML = `
+            <div class="weather-risk-score-row">
+                <div class="weather-risk-score">${Number.isFinite(score) ? score : 0}</div>
+                <div class="weather-risk-score-max">/ 100<br>Risk Score</div>
+            </div>
+
+            <div class="weather-critical-window">
+                <div class="weather-critical-label">Critical Weather Window</div>
+                <div class="weather-critical-time">
+                    ${escapeHtml(formatRiskDateTime(critical.time))}
+                </div>
+                <div class="weather-critical-reasons">
+                    ${reasonsHtml}
+                </div>
+            </div>
+
+            <div class="weather-risk-timeline">
+                ${timelineHtml || `
+                    <div class="weather-risk-loading">No risk timeline available.</div>
+                `}
+            </div>
+
+            <div class="weather-risk-note">
+                ${escapeHtml(data.method?.note || "Risk levels are analytical indicators derived from forecast data and ensemble uncertainty.")}
+            </div>
+        `;
+    }
+
+    async function loadRiskForLocation(latitude, longitude, name) {
+        const requestId = ++riskRequestId;
+        const content = document.getElementById("weatherRiskContent");
+        const badge = document.getElementById("weatherRiskBadge");
+
+        if (content) {
+            content.innerHTML = `
+                <div class="weather-risk-loading">
+                    Analysing forecast risk and critical weather windows...
+                </div>
+            `;
+        }
+        if (badge) {
+            badge.textContent = "ANALYSING";
+            badge.className = "weather-risk-badge low";
+        }
+
+        try {
+            const params = new URLSearchParams({
+                lat: String(latitude),
+                lon: String(longitude)
+            });
+            if (name) params.set("name", name);
+
+            const response = await fetch(`${API_BASE}/api/risk?${params.toString()}`);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+            const data = await response.json();
+            if (requestId !== riskRequestId) return;
+
+            renderWeatherRisk(data);
+        } catch (error) {
+            if (requestId !== riskRequestId) return;
+            console.error("Risk Engine loading failed:", error);
+            if (content) {
+                content.innerHTML = `
+                    <div class="weather-risk-error">
+                        Risk analysis is temporarily unavailable. Weather data can still be viewed above.
+                    </div>
+                `;
+            }
+            if (badge) {
+                badge.textContent = "UNAVAILABLE";
+                badge.className = "weather-risk-badge low";
+            }
+        }
+    }
+
+
+    // ========================================================
+    // INITIAL LOAD
+    // ========================================================
+
+    syncWeather(false);
+
+    
+
+    // ========================================================
+    // AUTO REFRESH
+    // ========================================================
+
+    setInterval(
+        async () => {
+
+            if (customLocation?.location) {
+
+                await loadCoordinateWeather({
+                    latitude: customLocation.location.latitude,
+                    longitude: customLocation.location.longitude,
+                    name: customLocation.location.name,
+                    city: customLocation.location.city,
+                    state: customLocation.location.state,
+                    country: customLocation.location.country,
+                });
+
+            } else {
+
+                syncWeather(false);
+
+            }
+
+        },
+        60000
+    );
+
+    
+
+</script>
+
+</body>
+</html>
