@@ -1,5 +1,6 @@
 import asyncio
 import math
+import os
 import time
 from datetime import datetime, timezone
 from contextlib import asynccontextmanager
@@ -130,7 +131,8 @@ app.add_middleware(
         "http://127.0.0.1:3000",
         "http://localhost:3000",
         "http://127.0.0.1:5500",
-                "https://zephyr-ai-1-qdh7.onrender.com",
+        "http://localhost:5500",
+        "https://zephyr-ai-1-qdh7.onrender.com",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -223,33 +225,97 @@ async def fetch_weather_coordinates(
     city: str | None = None,
     state: str | None = None,
 ) -> dict[str, Any]:
+    """
+    Fetch real-time forecast data for one coordinate.
+
+    Uses a 5-minute per-coordinate cache to reduce repeated upstream calls.
+    Retries Open-Meteo HTTP 429 responses with a short exponential backoff.
+    No synthetic/demo weather data is generated.
+    """
     if http_client is None:
         raise RuntimeError("HTTP client is not initialized.")
 
     validate_coordinates(latitude, longitude)
 
+    cache_key = f"{round(latitude, 4)}:{round(longitude, 4)}"
+    now = time.time()
+
+    # Function-level cache keeps this change self-contained.
+    weather_cache = getattr(fetch_weather_coordinates, "_cache", {})
+    cached = weather_cache.get(cache_key)
+
+    if cached and now - cached["timestamp"] < 300:
+        return cached["data"]
+
     params = {
         "latitude": latitude,
         "longitude": longitude,
         "current": ",".join([
-            "temperature_2m", "relative_humidity_2m", "apparent_temperature",
-            "precipitation", "rain", "cloud_cover", "pressure_msl",
-            "wind_speed_10m", "wind_direction_10m", "wind_gusts_10m", "weather_code",
+            "temperature_2m",
+            "relative_humidity_2m",
+            "apparent_temperature",
+            "precipitation",
+            "rain",
+            "cloud_cover",
+            "pressure_msl",
+            "wind_speed_10m",
+            "wind_direction_10m",
+            "wind_gusts_10m",
+            "weather_code",
         ]),
         "hourly": ",".join([
-            "temperature_2m", "precipitation_probability", "precipitation",
-            "rain", "wind_gusts_10m", "weather_code",
+            "temperature_2m",
+            "precipitation_probability",
+            "precipitation",
+            "rain",
+            "wind_gusts_10m",
+            "weather_code",
         ]),
         "daily": ",".join([
-            "temperature_2m_max", "temperature_2m_min", "precipitation_sum",
-            "precipitation_probability_max", "weather_code", "wind_gusts_10m_max",
+            "temperature_2m_max",
+            "temperature_2m_min",
+            "precipitation_sum",
+            "precipitation_probability_max",
+            "weather_code",
+            "wind_gusts_10m_max",
         ]),
         "forecast_days": 3,
         "timezone": "auto",
     }
 
-    response = await http_client.get(OPEN_METEO_URL, params=params)
+    response = None
+
+    for attempt in range(3):
+        response = await http_client.get(
+            OPEN_METEO_URL,
+            params=params,
+        )
+
+        if response.status_code != 429:
+            break
+
+        retry_after = response.headers.get("Retry-After")
+
+        try:
+            wait_seconds = float(retry_after) if retry_after else 2 ** attempt
+        except (TypeError, ValueError):
+            wait_seconds = 2 ** attempt
+
+        wait_seconds = min(max(wait_seconds, 1.0), 10.0)
+
+        print(
+            f"Open-Meteo rate limit (429). "
+            f"Retry {attempt + 1}/3 in {wait_seconds:.1f}s"
+        )
+
+        await asyncio.sleep(wait_seconds)
+
+    if response is None:
+        raise RuntimeError("No response received from Open-Meteo.")
+
+    # Keep the actual upstream HTTP error so the API route can report it.
     response.raise_for_status()
+
     data = response.json()
 
     current = data.get("current", {})
@@ -258,9 +324,11 @@ async def fetch_weather_coordinates(
     daily = data.get("daily", {})
 
     weather_code = current.get("weather_code")
+
     precipitation_probability = (
         hourly.get("precipitation_probability", [None])[0]
-        if hourly.get("precipitation_probability") else None
+        if hourly.get("precipitation_probability")
+        else None
     )
 
     risk = get_risk_level(
@@ -272,7 +340,7 @@ async def fetch_weather_coordinates(
 
     location_name = name or city or "Custom location"
 
-    return {
+    result = {
         "id": "custom",
         "location": {
             "name": location_name,
@@ -313,11 +381,24 @@ async def fetch_weather_coordinates(
             "temperature_max_c": daily.get("temperature_2m_max", []),
             "temperature_min_c": daily.get("temperature_2m_min", []),
             "precipitation_sum_mm": daily.get("precipitation_sum", []),
-            "precipitation_probability_max": daily.get("precipitation_probability_max", []),
-            "wind_gust_max_kmh": daily.get("wind_gusts_10m_max", []),
+            "precipitation_probability_max": daily.get(
+                "precipitation_probability_max", []
+            ),
+            "wind_gust_max_kmh": daily.get(
+                "wind_gusts_10m_max", []
+            ),
             "weather_code": daily.get("weather_code", []),
         },
     }
+
+    weather_cache[cache_key] = {
+        "timestamp": time.time(),
+        "data": result,
+    }
+
+    fetch_weather_coordinates._cache = weather_cache
+
+    return result
 
 
 async def fetch_location(location_id: str, location: dict[str, Any]) -> dict[str, Any]:
@@ -1200,7 +1281,6 @@ async def api_risk(
 # ============================================================
 
 if __name__ == "__main__":
-    import os
     import uvicorn
 
     port = int(os.environ.get("PORT", 8000))
